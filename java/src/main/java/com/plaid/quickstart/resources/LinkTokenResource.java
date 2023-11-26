@@ -16,6 +16,7 @@ import java.util.Date;
 import java.util.ArrayList;
 import java.util.Arrays;
 
+import javax.ws.rs.FormParam;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.Produces;
@@ -53,8 +54,13 @@ public class LinkTokenResource {
     }
   }
 
-  @POST public LinkToken getLinkToken() throws IOException {
-    
+    /**
+     * @param accessToken Optional. If provided, includes the access_token with the link token create
+     *                    request, which invokes <a href="https://plaid.com/docs/link/update-mode/">update mode</a>
+     */
+  @POST
+  public LinkToken getLinkToken(@FormParam("access_token") String accessToken) throws IOException {
+
 
     String clientUserId = Long.toString((new Date()).getTime());
     LinkTokenCreateRequestUser user = new LinkTokenCreateRequestUser()
@@ -75,6 +81,12 @@ public class LinkTokenResource {
 			.countryCodes(this.correctedCountryCodes)
 			.language("en")
       .redirectUri(this.redirectUri);
+
+        // If access token was included in the frontend request, include it in our request to Plaid
+        //  to invoke update mode
+        if (accessToken != null) {
+            request.accessToken(accessToken);
+        }
 
     	Response<LinkTokenCreateResponse> response =plaidClient
 			.linkTokenCreate(request)
