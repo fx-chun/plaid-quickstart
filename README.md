@@ -4,7 +4,7 @@ This repository accompanies Plaid's [**quickstart guide**][quickstart].
 
 Here you'll find full example integration apps using our [**client libraries**][libraries].
 
-This Quickstart is designed to show as many products and configurations as possible, including all five officially supported backends and multiple Plaid APIs, against a React frontend. 
+This Quickstart is designed to show as many products and configurations as possible, including all five officially supported client libraries and multiple Plaid APIs, against a React frontend. 
 
 If you prefer a non-React frontend platform, or a more minimal backend in one language with one endpoint, see the [Tiny Quickstart](https://github.com/plaid/tiny-quickstart), which shows a simpler backend and is available for JavaScript, Next.js, React, and React Native frontends.
 
@@ -12,6 +12,7 @@ For Identity Verification, see the [Identity Verification Quickstart](https://gi
 
 For Income, see the [Income sample app](https://github.com/plaid/income-sample). 
 
+For a more in-depth Transfer Quickstart, see the [Transfer Quickstart](https://github.com/plaid/transfer-quickstart) (Node only).
 
 ![Plaid quickstart app](/assets/quickstart.jpeg)
 
@@ -107,7 +108,7 @@ Once started with one of the commands below, the quickstart will be running on h
 
 ```bash
 $ cd ./node
-$ npm ci
+$ npm install
 $ ./start.sh
 ```
 
@@ -172,9 +173,9 @@ A community-supported implementation of the Plaid Quickstart using the [Going.Pl
 #### 2. Running the frontend
 
 ```bash
-$ cd ./frontend
-$ npm ci
-$ npm start
+cd ./frontend
+npm ci
+npm start
 ```
 
 ### Run with Docker
@@ -227,12 +228,22 @@ make stop language=node
 
 ## Test credentials
 
-In Sandbox, you can log in to any supported institution (except Capital One) using `user_good` as the username and `pass_good` as the password. If prompted to enter a 2-factor authentication code, enter `1234`.
+In Sandbox, you can log in to any supported institution using `user_good` as the username and `pass_good` as the password. If prompted to enter a 2-factor authentication code, enter `1234`. In Production, use real-life credentials.
 
-In Development or Production, use real-life credentials.
+### Transactions test credentials
+For Transactions, you will get the most realistic results using `user_transactions_dynamic` as the username, and any non-blank string as the password. For more details on the special capabilities of this test user, see the [docs](https://plaid.com/docs/transactions/transactions-data/#testing-pending-and-posted-transactions).
+
+### Credit test credentials
+For credit and underwriting products like Assets and Statements, you will get the most realistic results using one of the [credit and underwriting tests credentials](https://plaid.com/docs/sandbox/test-credentials/#credit-and-income-testing-credentials), like `user_bank_income` / `{}`.
 
 ## Troubleshooting
 
+### Link fails in Production with "something went wrong" / `INVALID_SERVER_ERROR` but works in Sandbox
+
+If Link works in Sandbox but fails in Production, the error is most likely one of the following:
+1) You need to set a use case for Link, which you can do in the Plaid Dashboard under [Link -> Customization -> Data Transparency Messaging](https://dashboard.plaid.com/link/data-transparency-v5).
+2) You don't yet have OAuth access for the institution you selected. This is especially common if the institution is Chase or Charles Schwab, which have longer OAuth registration turnarounds. To check your OAuth registration status and see if you have any required action items, see the [US OAuth Institutions page](https://dashboard.plaid.com/settings/compliance/us-oauth-institutions) in the Dashboard.
+   
 ### Can't get a link token, or API calls are 400ing
 
 View the server logs to see the associated error message with detailed troubleshooting instructions. If you can't view logs locally, view them via the [Dashboard activity logs](https://dashboard.plaid.com/activity/logs). 
@@ -246,7 +257,7 @@ If you get a "Connectivity not supported" error after selecting a financial inst
 
 ### "You need to update your app" or "institution not supported"
 
-If you get a "You need to update your app" or "institution not supported" error after selecting a financial institution in Link, you're probably running the Quickstart in Development (or Production) and attempting to link an institution, such as Chase or Wells Fargo, that requires an OAuth-based connection. In order to make OAuth connections to US-based institutions in Development or Production, you must have Production access approval, and certain institutions may also require additional approvals before you can be enabled. To use this institution, [apply for Production access](https://dashboard.plaid.com/overview/production) and see the [OAuth insitutions page](https://dashboard.plaid.com/team/oauth-institutions) for any other required steps and to track your OAuth enablement status.
+If you get a "You need to update your app" or "institution not supported" error after selecting a financial institution in Link, you're probably running the Quickstart in Production and attempting to link an institution, such as Chase or Wells Fargo, that requires an OAuth-based connection. In order to make OAuth connections to US-based institutions in Production, you must have full Production access approval, and certain institutions may also require additional approvals before you can be enabled. To use this institution, [apply for full Production access](https://dashboard.plaid.com/overview/production) and see the [OAuth insitutions page](https://dashboard.plaid.com/team/oauth-institutions) for any other required steps and to track your OAuth enablement status.
 
 ### "oauth uri does not contain a valid oauth_state_id query parameter"
 

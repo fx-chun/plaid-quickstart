@@ -25,9 +25,11 @@ api_client = Plaid::ApiClient.new(
 )
 
 client = Plaid::PlaidApi.new(api_client)
-# We store the access_token in memory - in production, store it in a secure
+products = ENV['PLAID_PRODUCTS'].split(',')
+# We store the access_token and user_token in memory - in production, store it in a secure
 # persistent data store.
 access_token = nil
+user_token = nil
 # The payment_id is only relevant for the UK Payment Initiation product.
 # We store the payment_token in memory - in production, store it in a secure
 # persistent data store.
@@ -89,13 +91,23 @@ get '/api/transactions' do
         }
       )
       response = client.transactions_sync(request)
+      cursor = response.next_cursor
+
+      # If no transactions are available yet, wait and poll the endpoint.
+      # Normally, we would listen for a webhook but the Quickstart doesn't 
+      # support webhooks. For a webhook example, see 
+      # https://github.com/plaid/tutorial-resources or
+      # https://github.com/plaid/pattern
+      if cursor == ""
+        sleep 2 
+        next 
+      end
+    
       # Add this page of results
       added += response.added
       modified += response.modified
       removed += response.removed
       has_more = response.has_more
-      # Update cursor to the next cursor
-      cursor = response.next_cursor
       pretty_print_response(response.to_hash)
     end
     # Return the 8 most recent transactions
@@ -297,6 +309,31 @@ get '/api/assets' do
     pdf: Base64.encode64(File.read(asset_report_pdf)) }.to_json
 end
 
+get '/api/statements' do
+  begin
+    statements_list_request = Plaid::StatementsListRequest.new(
+      {
+        access_token: access_token
+      }
+    )
+    statements_list_response =
+      client.statements_list(statements_list_request)
+    pretty_print_response(statements_list_response.to_hash)
+  rescue Plaid::ApiError => e
+    error_response = format_error(e)
+    pretty_print_response(error_response)
+    content_type :json
+    error_response.to_json
+  end
+  statement_id = statements_list_response.accounts[0].statements[0].statement_id
+  statements_download_request = Plaid::StatementsDownloadRequest.new({ access_token: access_token, statement_id: statement_id })
+  statement_pdf = client.statements_download(statements_download_request)
+
+  content_type :json
+  { json: statements_list_response.to_hash,
+    pdf: Base64.encode64(File.read(statement_pdf)) }.to_json
+end
+
 # rubocop:enable Metrics/BlockLength
 
 # Retrieve high-level information about an Item
@@ -370,6 +407,33 @@ get '/api/transfer_authorize' do
   end
 end
 
+get '/api/signal_evaluate' do
+  begin
+    # We call /accounts/get to obtain first account_id - in production,
+    # account_id's should be persisted in a data store and retrieved
+    # from there.
+    accounts_get_request = Plaid::AccountsGetRequest.new({ access_token: access_token })
+    accounts_get_response = client.accounts_get(accounts_get_request)
+    account_id = accounts_get_response.accounts[0].account_id
+
+    signal_evaluate_request = Plaid::SignalEvaluateRequest.new({
+      access_token: access_token,
+      account_id: account_id,
+      client_transaction_id: 'tx1234',
+      amount: 100.00
+    })
+    signal_evaluate_response = client.signal_evaluate(signal_evaluate_request)
+    pretty_print_response(signal_evaluate_response.to_hash)
+    content_type :json
+    signal_evaluate_response.to_hash.to_json
+  rescue Plaid::ApiError => e
+    error_response = format_error(e)
+    pretty_print_response(error_response)
+    content_type :json
+    error_response.to_json
+  end
+end
+
 get '/api/transfer_create' do
   begin
       transfer_create_request = Plaid::TransferCreateRequest.new({
@@ -419,10 +483,63 @@ post '/api/create_link_token' do
         redirect_uri: nil_if_empty_envvar('PLAID_REDIRECT_URI')
       }
     )
+    if ENV['PLAID_PRODUCTS'].split(',').include?("statements")
+      today = Date.today
+      statements = Plaid::LinkTokenCreateRequestStatements.new(
+        end_date: today,
+        start_date: today-30
+      )
+      link_token_create_request.statements=statements
+    end
+    if products.any? { |product| product.start_with?("cra_") }
+      link_token_create_request.cra_options = Plaid::LinkTokenCreateRequestCraOptions.new(
+        days_requested: 60
+      )
+      link_token_create_request.user_token=user_token
+      link_token_create_request.consumer_report_permissible_purpose =Plaid::ConsumerReportPermissiblePurpose::ACCOUNT_REVIEW_CREDIT
+
+    end
     link_response = client.link_token_create(link_token_create_request)
     pretty_print_response(link_response.to_hash)
     content_type :json
     { link_token: link_response.link_token }.to_json
+  rescue Plaid::ApiError => e
+    error_response = format_error(e)
+    pretty_print_response(error_response)
+    content_type :json
+    error_response.to_json
+  end
+end
+
+# Create a user token which can be used for Plaid Check, Income, or Multi-Item link flows
+# https://plaid.com/docs/api/users/#usercreate
+post '/api/create_user_token' do
+  begin
+    request_data = {
+      # Typically this will be a user ID number from your application.
+      client_user_id: 'user_' + SecureRandom.uuid
+    }
+
+    if products.any? { |product| product.start_with?("cra_") }
+      request_data[:consumer_report_user_identity] = {
+        first_name: 'Harry',
+        last_name: 'Potter',
+        phone_numbers: ['+16174567890'],
+        emails: ['harrypotter@example.com'],
+        primary_address: {
+          city: 'New York',
+          region: 'NY',
+          street: '4 Privet Drive',
+          postal_code: '11111',
+          country: 'US'
+        }
+      }
+    end
+
+    user = client.user_create(Plaid::UserCreateRequest.new(request_data))
+    user_token = user.user_token
+    content_type :json
+    user.to_hash.to_json
   rescue Plaid::ApiError => e
     error_response = format_error(e)
     pretty_print_response(error_response)
@@ -528,6 +645,115 @@ post '/api/create_link_token_for_payment' do
     pretty_print_response(error_response)
     content_type :json
     error_response.to_json
+  end
+end
+
+# Retrieve CRA Base Report and PDF
+# Base report: https://plaid.com/docs/check/api/#cracheck_reportbase_reportget
+# PDF: https://plaid.com/docs/check/api/#cracheck_reportpdfget
+get '/api/cra/get_base_report' do
+  begin
+    get_response = get_cra_base_report_with_retries(client, user_token)
+    pretty_print_response(get_response.to_hash)
+
+    pdf_response = client.cra_check_report_pdf_get(
+      Plaid::CraCheckReportPDFGetRequest.new({ user_token: user_token })
+    )
+
+    content_type :json
+    {
+      report: get_response.report.to_hash,
+      pdf: Base64.encode64(File.read(pdf_response))
+    }.to_json
+  rescue Plaid::ApiError => e
+    error_response = format_error(e)
+    pretty_print_response(error_response)
+    content_type :json
+    error_response.to_json
+  end
+end
+
+def get_cra_base_report_with_retries(plaid_client, user_token)
+  poll_with_retries do
+    plaid_client.cra_check_report_base_report_get(
+      Plaid::CraCheckReportBaseReportGetRequest.new({ user_token: user_token })
+    )
+  end
+end
+
+# Retrieve CRA Income Insights and PDF with Insights
+# Income insights: https://plaid.com/docs/check/api/#cracheck_reportincome_insightsget
+# PDF w/ income insights: https://plaid.com/docs/check/api/#cracheck_reportpdfget
+get '/api/cra/get_income_insights' do
+  begin
+    get_response = get_income_insights_with_retries(client, user_token)
+    pretty_print_response(get_response.to_hash)
+
+    pdf_response = client.cra_check_report_pdf_get(
+      Plaid::CraCheckReportPDFGetRequest.new({ user_token: user_token, add_ons: [Plaid::CraPDFAddOns::CRA_INCOME_INSIGHTS] })
+    )
+
+    content_type :json
+    {
+      report: get_response.report.to_hash,
+      pdf: Base64.encode64(File.read(pdf_response))
+    }.to_json
+  rescue Plaid::ApiError => e
+    error_response = format_error(e)
+    pretty_print_response(error_response)
+    content_type :json
+    error_response.to_json
+  end
+end
+
+def get_income_insights_with_retries(plaid_client, user_token)
+  poll_with_retries do
+    plaid_client.cra_check_report_income_insights_get(
+      Plaid::CraCheckReportIncomeInsightsGetRequest.new({ user_token: user_token })
+    )
+  end
+end
+
+# Retrieve CRA Partner Insights
+# https://plaid.com/docs/check/api/#cracheck_reportpartner_insightsget
+get '/api/cra/get_partner_insights' do
+  begin
+    response = get_check_partner_insights_with_retries(client, user_token)
+    pretty_print_response(response.to_hash)
+
+    content_type :json
+    response.to_hash.to_json
+  rescue Plaid::ApiError => e
+    error_response = format_error(e)
+    pretty_print_response(error_response)
+    content_type :json
+    error_response.to_json
+  end
+end
+
+def get_check_partner_insights_with_retries(plaid_client, user_token)
+  poll_with_retries do
+    plaid_client.cra_check_report_partner_insights_get(
+      Plaid::CraCheckReportPartnerInsightsGetRequest.new({ user_token: user_token })
+    )
+  end
+end
+
+# Since this quickstart does not support webhooks, this function can be used to poll
+# an API that would otherwise be triggered by a webhook.
+# For a webhook example, see
+# https://github.com/plaid/tutorial-resources or
+# https://github.com/plaid/pattern
+def poll_with_retries(ms = 1000, retries_left = 20)
+  begin
+    yield
+  rescue Plaid::ApiError => e
+    if retries_left > 0
+      sleep(ms / 1000.0)
+      poll_with_retries(ms, retries_left - 1) { yield }
+    else
+      raise 'Ran out of retries while polling'
+    end
   end
 end
 

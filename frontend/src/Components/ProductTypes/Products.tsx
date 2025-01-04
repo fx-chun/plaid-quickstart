@@ -16,6 +16,8 @@ import {
   incomePaystubsCategories,
   transferCategories,
   transferAuthorizationCategories,
+  signalCategories,
+  statementsCategories,
   transformAuthData,
   transformTransactionsData,
   transformBalanceData,
@@ -28,10 +30,18 @@ import {
   transformTransferData,
   transformTransferAuthorizationData,
   transformIncomePaystubsData,
+  transformSignalData,
+  transformStatementsData,
+  transformBaseReportGetData,
+  transformIncomeInsightsData,
+  checkReportBaseReportCategories,
+  checkReportInsightsCategories,
+  transformPartnerInsightsData,
+  checkReportPartnerInsightsCategories
 } from "../../dataUtilities";
 
 const Products = () => {
-  const { products } = useContext(Context);
+  const { products, isCraProductsExclusively } = useContext(Context);
   return (
     <ProductTypesContainer productType="Products">
       {products.includes("payment_initiation") && (
@@ -80,12 +90,12 @@ const Products = () => {
           endpoint="assets"
           name="Assets"
           categories={assetsCategories}
-          schema="/assets_report/get/"
+          schema="/asset_report/get/"
           description="Create and retrieve assets information an asset report"
           transformData={transformAssetsData}
         />
       )}
-      {!products.includes("payment_initiation") && (
+      {!products.includes("payment_initiation") && !isCraProductsExclusively && (
           <Endpoint
               endpoint="balance"
               name="Balance"
@@ -142,11 +152,36 @@ const Products = () => {
             name="Transfer"
             categories={transferCategories}
             schema="/transfer/create/"
-            description="(After calling /transfer/authorization/create) Execute an authorized 1-dollar ACH transfer payment from the linked account"
+            description="(After calling /transfer/authorization/create) Execute an authorized 1-dollar ACH transfer payment from the first linked account"
             transformData={transformTransferData}
           />
         </>
       )}
+      {products.includes("signal") && (
+        <>
+        <Endpoint
+            endpoint="signal_evaluate"
+            name="Signal"
+            categories={signalCategories}
+            schema="/signal/evaluate"
+            description="Evaluate the return risk of a proposed $100 debit from the first linked account (in Sandbox, results are randomly generated)"
+            transformData={transformSignalData}
+          />
+        </>
+      )}
+      {products.includes("statements") && (
+        <>
+        <Endpoint
+            endpoint="statements"
+            name="Statements"
+            categories={statementsCategories}
+            schema="/statements/list and /statements/download"
+            description="List out and download the most recent statement"
+            transformData={transformStatementsData}
+          />
+        </>
+      )}
+
       {products.includes("income_verification") && (
         <Endpoint
           endpoint="/income/verification/paystubs"
@@ -156,6 +191,39 @@ const Products = () => {
           description="(Deprecated) Retrieve information from the paystubs used for income verification"
           transformData={transformIncomePaystubsData}
           />
+      )}
+
+      {(products.includes("cra_base_report") || products.includes("cra_income_insights")) && (
+        <Endpoint
+          endpoint="/cra/get_base_report"
+          name="CRA Base Report"
+          categories={checkReportBaseReportCategories}
+          schema="/cra/check_report/base_report/get"
+          description="Retrieve a Consumer Report powered by Plaid Check"
+          transformData={transformBaseReportGetData}
+        />
+      )}
+
+      {(products.includes("cra_base_report") || products.includes("cra_income_insights")) && (
+        <Endpoint
+          endpoint="/cra/get_income_insights"
+          name="CRA Income Insights"
+          categories={checkReportInsightsCategories}
+          schema="/cra/check_report/income_insights/get"
+          description="Retrieve cash flow information from your user's banks"
+          transformData={transformIncomeInsightsData}
+        />
+      )}
+
+      {products.includes("cra_partner_insights") && (
+        <Endpoint
+          endpoint="/cra/get_partner_insights"
+          name="CRA Partner Insights"
+          categories={checkReportPartnerInsightsCategories}
+          schema="/cra/check_report/partner_insights/get"
+          description="Retrieve cash flow insights from partners"
+          transformData={transformPartnerInsightsData}
+        />
       )}
     </ProductTypesContainer>
   );
