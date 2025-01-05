@@ -1,8 +1,10 @@
 # dvankley's Quickstart Fork
 This fork is intended for use by users of https://github.com/dvankley/firefly-plaid-connector-2/.
 
+Note that this fork's changes have only been made to the `java` backend, so you will need to run that backend to use the changes.
+
 List of differences from upstream:
-1. Supports passing in `input_access_token` to perform update rather than create flow as described
+1. Supports passing in `input_access_token` to trigger the update flow rather than the create flow as described
 [here](https://github.com/dvankley/firefly-plaid-connector-2/tree/main#update-mode).
 2. If `PLAID_PRODUCTS` includes `transactions`, this version will automatically set `days_requested` in `/link/token/create`
 to the max value of 730 days. See [the docs](https://plaid.com/docs/api/products/transactions/#transactions-sync-request-options-days-requested)
