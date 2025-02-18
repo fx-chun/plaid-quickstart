@@ -13,8 +13,6 @@ plaid_env: ${PLAID_ENV:-sandbox}
 server:
   application_connectors:
     - type: http
-      port: 8000
-  admin_connectors:
-    - type: http
-      port: 8001
+      port: ${APP_PORT}
+  admin_connectors: []
   rootPath: '/api'
